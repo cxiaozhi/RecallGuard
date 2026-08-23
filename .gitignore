@@ -1,0 +1,12 @@
+/build/
+/out/
+/.cache/
+/.vs/
+/.vscode/
+*.db
+*.db-shm
+*.db-wal
+*.user
+*.suo
+*.VC.db
+compile_commands.json
