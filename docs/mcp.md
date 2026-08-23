@@ -1,11 +1,12 @@
 # MCP 接入
 
-`recall-memory-mcp` 是本地 stdio MCP 服务。把 `RECALL_MEMORY_DB` 指向桌面控制台使用的同一个数据库：
+Recall Memory 不发布独立 MCP 程序。启动 GUI 内置服务后，Agent 通过 Streamable HTTP 连接：
 
-```powershell
-$env:RECALL_MEMORY_DB = "D:/data/Recall Memory/recall-memory.db"
-.\recall-memory-mcp.exe
+```text
+http://127.0.0.1:47831/mcp
 ```
+
+桌面界面提供“复制 MCP 地址”按钮。MCP、HTTP、SQLite 和 Code Graph 全部运行在同一个 `recall-memory.exe` 进程中。
 
 ## 工具
 
@@ -34,4 +35,4 @@ MCP 有意不提供验证工具。Agent 不能把自己提交的记忆提升为�
 
 编码 Agent 可以在首次使用或代码变化后建立 Code Graph，并传入 `files`、`symbols`、`changedFiles` 和 `changedSymbols` 获得图谱邻接召回。非编码 Agent 不需要执行索引步骤。
 
-适配器采用基于 stdio 的 JSON-RPC，支持初始化、连通检查、工具发现和工具调用。日志只能写入 stderr，避免污染协议使用的 stdout。
+内置服务使用无状态 Streamable HTTP：JSON-RPC 请求通过 `POST /mcp` 发送并直接返回 JSON；通知返回 HTTP 202。服务只允许本机 Origin，且不提供独立命令行入口。

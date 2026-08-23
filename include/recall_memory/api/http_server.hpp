@@ -18,6 +18,8 @@ public:
     HttpServer& operator=(const HttpServer&) = delete;
 
     bool listen(const std::string& host, std::uint16_t port);
+    bool bind(const std::string& host, std::uint16_t port);
+    bool listen_after_bind();
     void stop();
 
 private:

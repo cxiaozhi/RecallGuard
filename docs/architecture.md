@@ -26,12 +26,10 @@ Recall Memory 是独立于 Agent 的经验记忆与重复错误防护平台。�
 | --- | --- |
 | `recall_memory_core` | 领域模型、SQLite 存储、召回排序、防重复策略和 C/C++ 图谱适配器 |
 | `recall_memory_transport` | HTTP 与 MCP 协议适配 |
-| `recall-memoryd` | 仅监听本机的 HTTP 服务 |
-| `recall-memory-mcp` | 供各类 Agent 使用的 JSON-RPC/MCP stdio 服务 |
-| `recall-memory-desktop` | 原生 Windows 服务控制台，负责配置、启动、停止和观察服务 |
+| `recall-memory` | 唯一发布程序；原生 Windows UI 及进程内 HTTP/MCP 服务 |
 | `recall_memory_tests` | 解析、增量存储、通用召回及防重复测试 |
 
-业务规则不属于传输层。已有 C++ 桌面产品既可直接链接 `recall_memory_core`，也可通过 HTTP 隔离进程，两种方式复用相同领域行为。
+业务规则不属于传输层。模块继续保持独立 CMake target，便于测试和演进，但这些内部边界不再暴露为多个发布程序。
 
 ## 记忆空间与数据模型
 
@@ -101,16 +99,16 @@ Recall Memory 应提供 Coding 模式，但模式只负责选择能力配置，�
 
 模式应属于 MCP 连接或 Agent 会话，而不是永久写死在经验记录上。同一个记忆空间可以被不同类型的 Agent 使用，经验仍通过通用作用域共享。未来增加运维、研究或浏览器自动化模式时，也只需注册新的领域适配器和任务钩子。
 
-## 桌面服务控制台
+## 桌面程序
 
-Windows 桌面端通过 `CreateProcess` 启动同目录的 `recall-memoryd.exe`，并使用 Job Object 托管子进程。关闭控制台会结束由它启动的服务，避免残留后台进程。默认数据库位于 `%LOCALAPPDATA%\Recall Memory\recall-memory.db`。
+Windows 桌面端是唯一产品入口。点击“启动服务”后，UI 进程直接构造 SQLite、记忆服务、Code Graph、HTTP 和 MCP 对象，并用内部工作线程监听本机端口；不会启动或依赖任何子进程。关闭窗口会停止工作线程并释放数据库。默认数据库位于 `%LOCALAPPDATA%\Recall Memory\recall-memory.db`。
 
-首版控制台只负责服务生命周期，不直接承载经验编辑器。后续可在相同桌面壳内增加记忆审核、召回解释、冲突合并、过时记忆清理和领域适配器管理。
+首版 UI 负责服务生命周期和连接地址。后续在同一个程序内增加记忆审核、召回解释、冲突合并、过时记忆清理和领域适配器管理。
 
 ## 安全决策
 
 - 服务默认只监听 `127.0.0.1`。
 - MCP 不提供经验验证工具，Agent 不能自行提升信任等级。
 - Recall Memory 只返回建议验证步骤，不自动执行命令或外部动作。
-- SQLite 启用 WAL 和五秒忙等待，允许桌面端、HTTP 与 MCP 进程共享数据库。
+- SQLite 启用 WAL 和五秒忙等待；HTTP 与 MCP 在同一 UI 进程内共享存储实例。
 - 暴露到非本机地址前，必须增加身份认证、授权策略与传输加密。

@@ -1,19 +1,28 @@
+#include "recall_memory/api/http_server.hpp"
+#include "recall_memory/codegraph/indexer.hpp"
+#include "recall_memory/memory/service.hpp"
+#include "recall_memory/storage/store.hpp"
+
 #include <windows.h>
 #include <commctrl.h>
 #include <commdlg.h>
 #include <shellapi.h>
 #include <shlobj.h>
 
-#include <filesystem>
+#include <atomic>
+#include <cstdint>
+#include <cstring>
 #include <cwchar>
+#include <filesystem>
+#include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
 
 constexpr wchar_t window_class[] = L"RecallMemoryDesktopWindow";
-constexpr UINT_PTR process_timer = 1;
-constexpr UINT autostart_message = WM_APP + 1;
+constexpr UINT service_finished_message = WM_APP + 1;
 
 enum ControlId {
     database_edit = 1001,
@@ -22,7 +31,18 @@ enum ControlId {
     port_edit,
     service_button,
     health_button,
+    mcp_button,
     log_edit,
+};
+
+struct ServiceRuntime {
+    std::unique_ptr<recall_memory::Store> store;
+    std::unique_ptr<recall_memory::CodeGraphIndexer> indexer;
+    std::unique_ptr<recall_memory::MemoryService> memory;
+    std::unique_ptr<recall_memory::HttpServer> server;
+    std::thread thread;
+    std::atomic<bool> finished{false};
+    std::atomic<bool> listen_result{false};
 };
 
 struct AppState {
@@ -34,12 +54,10 @@ struct AppState {
     HWND port{};
     HWND service{};
     HWND health{};
+    HWND mcp{};
     HWND log{};
     HFONT font{};
-    HANDLE process{};
-    HANDLE job{};
-    DWORD process_id{};
-    bool autostart{};
+    std::unique_ptr<ServiceRuntime> runtime;
 };
 
 AppState app;
@@ -67,6 +85,15 @@ std::filesystem::path default_database() {
     return executable_directory() / L"recall-memory.db";
 }
 
+std::wstring utf8_to_wide(const std::string& value) {
+    if (value.empty()) return {};
+    const auto length = MultiByteToWideChar(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), nullptr, 0);
+    if (length <= 0) return L"未知错误";
+    std::wstring result(static_cast<std::size_t>(length), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), result.data(), length);
+    return result;
+}
+
 void append_log(const std::wstring& message) {
     SYSTEMTIME time{};
     GetLocalTime(&time);
@@ -85,42 +112,27 @@ void set_running(bool running) {
     EnableWindow(app.host, !running);
     EnableWindow(app.port, !running);
     EnableWindow(app.health, running);
-}
-
-void release_process_handles() {
-    if (app.process != nullptr) CloseHandle(app.process);
-    if (app.job != nullptr) CloseHandle(app.job);
-    app.process = nullptr;
-    app.job = nullptr;
-    app.process_id = 0;
-    set_running(false);
+    EnableWindow(app.mcp, running);
 }
 
 void stop_service(bool write_log = true) {
-    if (app.process == nullptr) return;
-    if (app.job != nullptr) TerminateJobObject(app.job, 0);
-    else TerminateProcess(app.process, 0);
-    WaitForSingleObject(app.process, 3000);
-    release_process_handles();
-    if (write_log) append_log(L"服务已停止");
+    if (!app.runtime) return;
+    app.runtime->server->stop();
+    if (app.runtime->thread.joinable()) app.runtime->thread.join();
+    app.runtime.reset();
+    set_running(false);
+    if (write_log) append_log(L"内置服务已停止");
 }
 
 bool start_service() {
-    const auto daemon = executable_directory() / L"recall-memoryd.exe";
-    if (!std::filesystem::exists(daemon)) {
-        MessageBoxW(app.window, L"未找到 recall-memoryd.exe，请确保桌面端和服务程序位于同一目录。",
-                    L"无法启动服务", MB_OK | MB_ICONERROR);
-        return false;
-    }
-
     const auto database = std::filesystem::path(control_text(app.database));
-    const auto host = control_text(app.host);
+    const auto host_wide = control_text(app.host);
     const auto port_text = control_text(app.port);
     wchar_t* port_end = nullptr;
-    const auto port = wcstol(port_text.c_str(), &port_end, 10);
-    if (database.empty() || host.empty() || port_end == port_text.c_str() || *port_end != L'\0' ||
-        port < 1 || port > 65535) {
-        MessageBoxW(app.window, L"请填写有效的数据库路径、监听地址和端口（1-65535）。",
+    const auto port_value = wcstol(port_text.c_str(), &port_end, 10);
+    if (database.empty() || (host_wide != L"127.0.0.1" && host_wide != L"localhost") ||
+        port_end == port_text.c_str() || *port_end != L'\0' || port_value < 1 || port_value > 65535) {
+        MessageBoxW(app.window, L"请填写有效的数据库路径、本机监听地址和端口（1-65535）。",
                     L"配置无效", MB_OK | MB_ICONWARNING);
         return false;
     }
@@ -132,48 +144,38 @@ bool start_service() {
         return false;
     }
 
-    std::wstring command = L"\"" + daemon.wstring() + L"\" --db \"" + database.wstring() +
-                           L"\" --host \"" + host + L"\" --port " + port_text;
-    std::vector<wchar_t> command_buffer(command.begin(), command.end());
-    command_buffer.push_back(L'\0');
+    try {
+        auto runtime = std::make_unique<ServiceRuntime>();
+        runtime->store = std::make_unique<recall_memory::Store>(database);
+        runtime->indexer = std::make_unique<recall_memory::CodeGraphIndexer>(*runtime->store);
+        runtime->memory = std::make_unique<recall_memory::MemoryService>(*runtime->store);
+        runtime->server = std::make_unique<recall_memory::HttpServer>(
+            *runtime->store, *runtime->indexer, *runtime->memory);
 
-    app.job = CreateJobObjectW(nullptr, nullptr);
-    if (app.job == nullptr) {
-        MessageBoxW(app.window, L"无法创建服务进程托管对象。", L"启动失败", MB_OK | MB_ICONERROR);
-        return false;
-    }
-    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
-    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-    if (!SetInformationJobObject(app.job, JobObjectExtendedLimitInformation, &limits, sizeof(limits))) {
-        release_process_handles();
-        MessageBoxW(app.window, L"无法配置服务进程托管对象。", L"启动失败", MB_OK | MB_ICONERROR);
-        return false;
-    }
+        const std::string host = host_wide == L"localhost" ? "localhost" : "127.0.0.1";
+        const auto port = static_cast<std::uint16_t>(port_value);
+        if (!runtime->server->bind(host, port)) {
+            MessageBoxW(app.window, L"端口无法绑定，可能已被其他程序占用。",
+                        L"服务启动失败", MB_OK | MB_ICONERROR);
+            return false;
+        }
 
-    STARTUPINFOW startup{};
-    startup.cb = sizeof(startup);
-    PROCESS_INFORMATION process{};
-    const auto working_directory = executable_directory().wstring();
-    if (!CreateProcessW(daemon.c_str(), command_buffer.data(), nullptr, nullptr, FALSE,
-                        CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT, nullptr,
-                        working_directory.c_str(), &startup, &process)) {
-        release_process_handles();
-        MessageBoxW(app.window, L"服务进程启动失败。", L"启动失败", MB_OK | MB_ICONERROR);
+        auto* runtime_ptr = runtime.get();
+        runtime->thread = std::thread([runtime_ptr] {
+            runtime_ptr->listen_result = runtime_ptr->server->listen_after_bind();
+            runtime_ptr->finished = true;
+            PostMessageW(app.window, service_finished_message, 0, 0);
+        });
+        app.runtime = std::move(runtime);
+        set_running(true);
+        append_log(L"内置服务已启动");
+        append_log(L"HTTP 地址：http://" + host_wide + L":" + port_text);
+        append_log(L"MCP 地址：http://" + host_wide + L":" + port_text + L"/mcp");
+        return true;
+    } catch (const std::exception& exception) {
+        MessageBoxW(app.window, utf8_to_wide(exception.what()).c_str(), L"服务启动失败", MB_OK | MB_ICONERROR);
         return false;
     }
-    CloseHandle(process.hThread);
-    app.process = process.hProcess;
-    app.process_id = process.dwProcessId;
-    if (!AssignProcessToJobObject(app.job, app.process)) {
-        stop_service(false);
-        MessageBoxW(app.window, L"服务进程无法加入托管对象。", L"启动失败", MB_OK | MB_ICONERROR);
-        return false;
-    }
-
-    set_running(true);
-    append_log(L"服务已启动，进程 ID：" + std::to_wstring(app.process_id));
-    append_log(L"状态地址：http://" + host + L":" + port_text + L"/health");
-    return true;
 }
 
 void browse_database() {
@@ -191,9 +193,31 @@ void browse_database() {
     if (GetSaveFileNameW(&dialog)) SetWindowTextW(app.database, file);
 }
 
+std::wstring service_url(const wchar_t* path) {
+    return L"http://" + control_text(app.host) + L":" + control_text(app.port) + path;
+}
+
 void open_health() {
-    const auto url = L"http://" + control_text(app.host) + L":" + control_text(app.port) + L"/health";
+    const auto url = service_url(L"/health");
     ShellExecuteW(app.window, L"open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+}
+
+void copy_mcp_url() {
+    const auto url = service_url(L"/mcp");
+    const auto bytes = (url.size() + 1) * sizeof(wchar_t);
+    const auto memory = GlobalAlloc(GMEM_MOVEABLE, bytes);
+    if (memory == nullptr) return;
+    const auto destination = static_cast<wchar_t*>(GlobalLock(memory));
+    memcpy(destination, url.c_str(), bytes);
+    GlobalUnlock(memory);
+    if (!OpenClipboard(app.window)) {
+        GlobalFree(memory);
+        return;
+    }
+    EmptyClipboard();
+    SetClipboardData(CF_UNICODETEXT, memory);
+    CloseClipboard();
+    append_log(L"MCP 地址已复制到剪贴板");
 }
 
 HWND make_control(const wchar_t* class_name, const wchar_t* text, DWORD style, int id) {
@@ -224,6 +248,7 @@ void layout_controls(int width, int height) {
     MoveWindow(app.port, field_x + 300, 106, 90, row_height, TRUE);
     MoveWindow(app.service, margin, 152, 112, 34, TRUE);
     MoveWindow(app.health, margin + 124, 152, 112, 34, TRUE);
+    MoveWindow(app.mcp, margin + 248, 152, 132, 34, TRUE);
     MoveWindow(GetDlgItem(app.window, 2005), margin, 204, content_width, 24, TRUE);
     MoveWindow(app.log, margin, 232, content_width, (height > 280 ? height - 256 : 40), TRUE);
 }
@@ -245,13 +270,13 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
             app.port = make_control(WC_EDITW, L"47831", ES_NUMBER | ES_AUTOHSCROLL, port_edit);
             app.service = make_control(WC_BUTTONW, L"启动服务", BS_DEFPUSHBUTTON, service_button);
             app.health = make_control(WC_BUTTONW, L"打开状态页", BS_PUSHBUTTON, health_button);
+            app.mcp = make_control(WC_BUTTONW, L"复制 MCP 地址", BS_PUSHBUTTON, mcp_button);
             make_control(WC_STATICW, L"运行日志", SS_LEFT, 2005);
             app.log = make_control(WC_EDITW, L"", ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL,
                                    log_edit);
             app.status = GetDlgItem(window, 2001);
             set_running(false);
-            append_log(L"Recall Memory 服务控制台已就绪");
-            SetTimer(window, process_timer, 500, nullptr);
+            append_log(L"Recall Memory 已就绪");
             return 0;
         }
         case WM_SIZE:
@@ -265,27 +290,24 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
         case WM_COMMAND:
             switch (LOWORD(wparam)) {
                 case service_button:
-                    if (app.process != nullptr) stop_service();
+                    if (app.runtime) stop_service();
                     else start_service();
                     return 0;
                 case browse_button: browse_database(); return 0;
                 case health_button: open_health(); return 0;
+                case mcp_button: copy_mcp_url(); return 0;
             }
             break;
-        case WM_TIMER:
-            if (wparam == process_timer && app.process != nullptr &&
-                WaitForSingleObject(app.process, 0) == WAIT_OBJECT_0) {
-                DWORD exit_code = 0;
-                GetExitCodeProcess(app.process, &exit_code);
-                release_process_handles();
-                append_log(L"服务已退出，退出码：" + std::to_wstring(exit_code));
+        case service_finished_message:
+            if (app.runtime && app.runtime->finished) {
+                const auto listen_result = app.runtime->listen_result.load();
+                if (app.runtime->thread.joinable()) app.runtime->thread.join();
+                app.runtime.reset();
+                set_running(false);
+                append_log(listen_result ? L"内置服务已退出" : L"内置服务异常退出");
             }
             return 0;
-        case autostart_message:
-            start_service();
-            return 0;
         case WM_DESTROY:
-            KillTimer(window, process_timer);
             stop_service(false);
             if (app.font != nullptr) DeleteObject(app.font);
             PostQuitMessage(0);
@@ -296,7 +318,7 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
 
 }  // namespace
 
-int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR command_line, int show_command) {
+int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show_command) {
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     INITCOMMONCONTROLSEX controls{sizeof(controls), ICC_STANDARD_CLASSES};
     InitCommonControlsEx(&controls);
@@ -310,14 +332,12 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR command_line, int show_
     window_class_info.lpszClassName = window_class;
     if (!RegisterClassExW(&window_class_info)) return 1;
 
-    app.autostart = command_line != nullptr && std::wstring(command_line).find(L"--autostart") != std::wstring::npos;
     const auto window = CreateWindowExW(
-        0, window_class, L"Recall Memory 服务控制台", WS_OVERLAPPEDWINDOW,
+        0, window_class, L"Recall Memory", WS_OVERLAPPEDWINDOW,
         CW_USEDEFAULT, CW_USEDEFAULT, 760, 520, nullptr, nullptr, instance, nullptr);
     if (window == nullptr) return 1;
     ShowWindow(window, show_command);
     UpdateWindow(window);
-    if (app.autostart) PostMessageW(window, autostart_message, 0, 0);
 
     MSG message{};
     while (GetMessageW(&message, nullptr, 0, 0) > 0) {

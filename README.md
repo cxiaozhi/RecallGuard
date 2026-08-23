@@ -12,8 +12,8 @@ Recall Memory 本身不是 Agent，也不接管 Agent 的执行流程。任何 A
 - 输出历史重复风险、不变量及必要验证步骤
 - SQLite 本地持久化，不要求把经验写进项目文档
 - 独立创建通用记忆空间，非编码 Agent 无需绑定代码目录
-- 原生 Windows C++ 服务控制台，可配置数据库、地址和端口
-- 通用 MCP stdio 接口和本地 HTTP 接口
+- 原生 Windows C++ 桌面程序，可在界面内配置并启停服务
+- UI 进程内嵌 MCP Streamable HTTP 和本地 HTTP 接口
 - 可选 C/C++ Code Graph：使用 Tree-sitter 建立文件、符号、包含、引用和调用关系
 
 ## 构建
@@ -32,24 +32,15 @@ ctest --test-dir build -C Debug --output-on-failure
 
 ## 启动
 
-推荐直接启动桌面服务控制台：
+产品只发布一个 GUI 程序，双击或从文件管理器打开：
 
 ```powershell
-.\build\Debug\recall-memory-desktop.exe
+.\build\Debug\recall-memory.exe
 ```
 
-也可以单独启动本地 HTTP 服务：
+在界面中确认数据库、监听地址和端口后点击“启动服务”。HTTP 地址默认为 `http://127.0.0.1:47831`，MCP 地址默认为 `http://127.0.0.1:47831/mcp`，界面可直接复制 MCP 地址。
 
-```powershell
-.\build\Debug\recall-memoryd.exe --db .\recall-memory.db --port 47831
-```
-
-启动 MCP 服务：
-
-```powershell
-$env:RECALL_MEMORY_DB = ".\recall-memory.db"
-.\build\Debug\recall-memory-mcp.exe
-```
+没有独立 daemon、MCP 或命令行版本，HTTP、MCP、SQLite 和 Code Graph 均由该 GUI 进程内部托管。
 
 集成细节见[项目架构](docs/architecture.md)、[本地 HTTP 接口](docs/http-api.md)和[MCP 接入](docs/mcp.md)。
 

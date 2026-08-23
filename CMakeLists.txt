@@ -38,19 +38,11 @@ target_link_libraries(recall_memory_transport
 )
 recall_memory_enable_warnings(recall_memory_transport)
 
-add_executable(recall-memoryd apps/daemon/main.cpp)
-target_link_libraries(recall-memoryd PRIVATE recall_memory_transport)
-recall_memory_enable_warnings(recall-memoryd)
-
-add_executable(recall-memory-mcp apps/mcp/main.cpp)
-target_link_libraries(recall-memory-mcp PRIVATE recall_memory_transport)
-recall_memory_enable_warnings(recall-memory-mcp)
-
 if(WIN32)
-    add_executable(recall-memory-desktop WIN32 apps/desktop/main.cpp)
-    target_compile_definitions(recall-memory-desktop PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
-    target_link_libraries(recall-memory-desktop PRIVATE Comctl32 Comdlg32 Shell32)
-    recall_memory_enable_warnings(recall-memory-desktop)
+    add_executable(recall-memory WIN32 apps/desktop/main.cpp)
+    target_compile_definitions(recall-memory PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(recall-memory PRIVATE recall_memory_transport Comctl32 Comdlg32 Shell32)
+    recall_memory_enable_warnings(recall-memory)
 endif()
 
 if(RECALL_MEMORY_BUILD_TESTS)

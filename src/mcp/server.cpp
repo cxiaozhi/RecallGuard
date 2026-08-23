@@ -4,8 +4,6 @@
 
 #include <nlohmann/json.hpp>
 
-#include <filesystem>
-#include <iostream>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -131,76 +129,70 @@ json rpc_error(const json& id, int code, std::string message) {
 McpServer::McpServer(Store& store, CodeGraphIndexer& indexer, MemoryService& memory)
     : store_(store), indexer_(indexer), memory_(memory) {}
 
-int McpServer::run(std::istream& input, std::ostream& output) {
-    std::string line;
-    while (std::getline(input, line)) {
-        if (line.empty()) continue;
-        json request;
-        json id = nullptr;
-        try {
-            request = json::parse(line);
-            id = request.value("id", json(nullptr));
-            const auto method = request.at("method").get<std::string>();
-            if (method.starts_with("notifications/")) continue;
+std::optional<std::string> McpServer::handle(std::string_view message) {
+    json request;
+    json id = nullptr;
+    try {
+        request = json::parse(message);
+        id = request.value("id", json(nullptr));
+        if (!request.contains("method")) return std::nullopt;
+        const auto method = request.at("method").get<std::string>();
+        if (method.starts_with("notifications/")) return std::nullopt;
 
-            json result;
-            if (method == "initialize") {
-                const auto requested_version = request.value("params", json::object()).value(
-                    "protocolVersion", std::string("2025-06-18"));
-                result = {
-                    {"protocolVersion", requested_version},
-                    {"capabilities", {{"tools", {{"listChanged", false}}}}},
-                    {"serverInfo", {{"name", "Recall Memory"}, {"version", "0.1.0"}}},
-                    {"instructions", "开始任务前先召回相关经验，接受结果前运行防重复检查。代码任务可先建立代码图谱以增强召回。"},
-                };
-            } else if (method == "ping") {
-                result = json::object();
-            } else if (method == "tools/list") {
-                result = {{"tools", tools()}};
-            } else if (method == "tools/call") {
-                const auto params = request.at("params");
-                const auto name = params.at("name").get<std::string>();
-                const auto arguments = params.value("arguments", json::object());
-                try {
-                    if (name == "recall_memory_create_memory_space") {
-                        const auto space_name = arguments.at("name").get<std::string>();
-                        result = tool_success({
-                            {"workspaceId", store_.ensure_memory_space(space_name)}, {"name", space_name}});
-                    } else if (name == "recall_memory_index_workspace") {
-                        result = tool_success(indexer_.index(arguments.at("rootPath").get<std::string>()));
-                    } else if (name == "recall_memory_graph_status") {
-                        result = tool_success(store_.graph_status(arguments.at("workspaceId").get<std::string>()));
-                    } else if (name == "recall_memory_recall") {
-                        result = tool_success(memory_.recall(arguments.get<RecallRequest>()));
-                    } else if (name == "recall_memory_guard") {
-                        result = tool_success(memory_.guard(arguments.get<GuardRequest>()));
-                    } else if (name == "recall_memory_propose_experience") {
-                        result = tool_success(memory_.propose(arguments.get<ExperienceDraft>()));
-                    } else if (name == "recall_memory_feedback") {
-                        memory_.feedback(
-                            arguments.at("experienceId").get<std::string>(),
-                            arguments.at("value").get<std::string>(),
-                            arguments.value("note", std::string{}));
-                        result = tool_success({{"accepted", true}});
-                    } else {
-                        throw std::invalid_argument("Unknown tool: " + name);
-                    }
-                } catch (const std::exception& exception) {
-                    result = tool_failure(exception);
+        json result;
+        if (method == "initialize") {
+            const auto requested_version = request.value("params", json::object()).value(
+                "protocolVersion", std::string("2026-07-28"));
+            result = {
+                {"protocolVersion", requested_version},
+                {"capabilities", {{"tools", {{"listChanged", false}}}}},
+                {"serverInfo", {{"name", "Recall Memory"}, {"version", "0.1.0"}}},
+                {"instructions", "开始任务前先召回相关经验，接受结果前运行防重复检查。代码任务可先建立代码图谱以增强召回。"},
+            };
+        } else if (method == "ping") {
+            result = json::object();
+        } else if (method == "tools/list") {
+            result = {{"tools", tools()}};
+        } else if (method == "tools/call") {
+            const auto params = request.at("params");
+            const auto name = params.at("name").get<std::string>();
+            const auto arguments = params.value("arguments", json::object());
+            try {
+                if (name == "recall_memory_create_memory_space") {
+                    const auto space_name = arguments.at("name").get<std::string>();
+                    result = tool_success({
+                        {"workspaceId", store_.ensure_memory_space(space_name)}, {"name", space_name}});
+                } else if (name == "recall_memory_index_workspace") {
+                    result = tool_success(indexer_.index(arguments.at("rootPath").get<std::string>()));
+                } else if (name == "recall_memory_graph_status") {
+                    result = tool_success(store_.graph_status(arguments.at("workspaceId").get<std::string>()));
+                } else if (name == "recall_memory_recall") {
+                    result = tool_success(memory_.recall(arguments.get<RecallRequest>()));
+                } else if (name == "recall_memory_guard") {
+                    result = tool_success(memory_.guard(arguments.get<GuardRequest>()));
+                } else if (name == "recall_memory_propose_experience") {
+                    result = tool_success(memory_.propose(arguments.get<ExperienceDraft>()));
+                } else if (name == "recall_memory_feedback") {
+                    memory_.feedback(
+                        arguments.at("experienceId").get<std::string>(),
+                        arguments.at("value").get<std::string>(),
+                        arguments.value("note", std::string{}));
+                    result = tool_success({{"accepted", true}});
+                } else {
+                    throw std::invalid_argument("Unknown tool: " + name);
                 }
-            } else {
-                output << rpc_error(id, -32601, "Method not found: " + method).dump() << '\n' << std::flush;
-                continue;
+            } catch (const std::exception& exception) {
+                result = tool_failure(exception);
             }
-            output << json{{"jsonrpc", "2.0"}, {"id", id}, {"result", std::move(result)}}.dump()
-                   << '\n' << std::flush;
-        } catch (const json::exception& exception) {
-            output << rpc_error(id, -32602, exception.what()).dump() << '\n' << std::flush;
-        } catch (const std::exception& exception) {
-            output << rpc_error(id, -32603, exception.what()).dump() << '\n' << std::flush;
+        } else {
+            return rpc_error(id, -32601, "Method not found: " + method).dump();
         }
+        return json{{"jsonrpc", "2.0"}, {"id", id}, {"result", std::move(result)}}.dump();
+    } catch (const json::exception& exception) {
+        return rpc_error(id, -32602, exception.what()).dump();
+    } catch (const std::exception& exception) {
+        return rpc_error(id, -32603, exception.what()).dump();
     }
-    return 0;
 }
 
 }  // namespace recall_memory
