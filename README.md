@@ -35,7 +35,7 @@ ctest --test-dir build -C Debug --output-on-failure
 产品只发布一个 GUI 程序，双击或从文件管理器打开：
 
 ```powershell
-.\build\Debug\recall-memory.exe
+.\build\Debug\RecallMemory.exe
 ```
 
 在界面中确认数据库、监听地址和端口后点击“启动服务”。HTTP 地址默认为 `http://127.0.0.1:47831`，MCP 地址默认为 `http://127.0.0.1:47831/mcp`，界面可直接复制 MCP 地址。

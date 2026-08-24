@@ -26,7 +26,7 @@ RecallMemory 是独立于 Agent 的经验记忆与重复错误防护平台。它
 | --- | --- |
 | `recall_memory_core` | 领域模型、SQLite 存储、召回排序、防重复策略和 C/C++ 图谱适配器 |
 | `recall_memory_transport` | HTTP 与 MCP 协议适配 |
-| `recall-memory` | 唯一发布程序；原生 Windows UI 及进程内 HTTP/MCP 服务 |
+| `RecallMemory.exe` | 唯一发布程序；原生 Windows UI 及进程内 HTTP/MCP 服务 |
 | `recall_memory_tests` | 解析、增量存储、通用召回及防重复测试 |
 
 业务规则不属于传输层。模块继续保持独立 CMake target，便于测试和演进，但这些内部边界不再暴露为多个发布程序。

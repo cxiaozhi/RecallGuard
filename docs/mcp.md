@@ -6,7 +6,7 @@ RecallMemory 不发布独立 MCP 程序。启动 GUI 内置服务后，Agent 通
 http://127.0.0.1:47831/mcp
 ```
 
-桌面界面提供“复制 MCP 地址”按钮。MCP、HTTP、SQLite 和 Code Graph 全部运行在同一个 `recall-memory.exe` 进程中。
+桌面界面提供“复制 MCP 地址”按钮。MCP、HTTP、SQLite 和 Code Graph 全部运行在同一个 `RecallMemory.exe` 进程中。
 
 ## 工具
 
