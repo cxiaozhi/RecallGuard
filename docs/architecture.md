@@ -31,6 +31,18 @@ RecallMemory 是独立于 Agent 的经验记忆与重复错误防护平台。它
 
 业务规则不属于传输层。模块继续保持独立 CMake target，便于测试和演进，但这些内部边界不再暴露为多个发布程序。
 
+## 源码布局
+
+所有产品源码统一放在 `src` 目录，并按职责分为前端和后端：
+
+```text
+src/
+├── frontend/desktop/          Windows 桌面界面与程序入口
+└── backend/recall_memory/     HTTP、MCP、记忆、存储、Code Graph 与领域模型
+```
+
+这里的前端和后端是同一个 `RecallMemory.exe` 进程内的代码边界，不是两个程序，也不会产生独立的后端可执行文件。`tests` 只存放测试代码，`cmake` 只存放构建配置。
+
 ## 记忆空间与数据模型
 
 `workspaceId` 是记忆空间的隔离键，不限定为代码仓库。一个记忆空间可以代表项目、团队、用户、业务域或长期运行的 Agent。SQLite 保存四类数据：

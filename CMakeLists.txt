@@ -13,14 +13,14 @@ include(cmake/Dependencies.cmake)
 include(cmake/Warnings.cmake)
 
 add_library(recall_memory_core
-    src/domain/json.cpp
-    src/storage/sqlite.cpp
-    src/storage/store.cpp
-    src/codegraph/cpp_parser.cpp
-    src/codegraph/indexer.cpp
-    src/memory/service.cpp
+    src/backend/recall_memory/domain/json.cpp
+    src/backend/recall_memory/storage/sqlite.cpp
+    src/backend/recall_memory/storage/store.cpp
+    src/backend/recall_memory/codegraph/cpp_parser.cpp
+    src/backend/recall_memory/codegraph/indexer.cpp
+    src/backend/recall_memory/memory/service.cpp
 )
-target_include_directories(recall_memory_core PUBLIC include PRIVATE src)
+target_include_directories(recall_memory_core PUBLIC src/backend)
 target_link_libraries(recall_memory_core
     PUBLIC nlohmann_json::nlohmann_json
     PRIVATE recall_memory_sqlite tree-sitter tree-sitter-cpp
@@ -28,10 +28,10 @@ target_link_libraries(recall_memory_core
 recall_memory_enable_warnings(recall_memory_core)
 
 add_library(recall_memory_transport
-    src/api/http_server.cpp
-    src/mcp/server.cpp
+    src/backend/recall_memory/api/http_server.cpp
+    src/backend/recall_memory/mcp/server.cpp
 )
-target_include_directories(recall_memory_transport PUBLIC include)
+target_include_directories(recall_memory_transport PUBLIC src/backend)
 target_link_libraries(recall_memory_transport
     PUBLIC recall_memory_core
     PRIVATE httplib::httplib
@@ -39,7 +39,7 @@ target_link_libraries(recall_memory_transport
 recall_memory_enable_warnings(recall_memory_transport)
 
 if(WIN32)
-    add_executable(RecallMemory WIN32 apps/desktop/main.cpp)
+    add_executable(RecallMemory WIN32 src/frontend/desktop/main.cpp)
     target_compile_definitions(RecallMemory PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     target_link_libraries(RecallMemory PRIVATE recall_memory_transport Comctl32 Comdlg32 Shell32)
     recall_memory_enable_warnings(RecallMemory)

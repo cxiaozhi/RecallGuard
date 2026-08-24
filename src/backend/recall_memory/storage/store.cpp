@@ -1,7 +1,7 @@
 #include "recall_memory/storage/store.hpp"
 
 #include "recall_memory/domain/json.hpp"
-#include "storage/sqlite.hpp"
+#include "recall_memory/storage/sqlite.hpp"
 
 #include <algorithm>
 #include <array>
