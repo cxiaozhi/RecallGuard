@@ -146,7 +146,7 @@ std::optional<std::string> McpServer::handle(std::string_view message) {
             result = {
                 {"protocolVersion", requested_version},
                 {"capabilities", {{"tools", {{"listChanged", false}}}}},
-                {"serverInfo", {{"name", "Recall Memory"}, {"version", "0.1.0"}}},
+                {"serverInfo", {{"name", "RecallMemory"}, {"version", "0.1.0"}}},
                 {"instructions", "开始任务前先召回相关经验，接受结果前运行防重复检查。代码任务可先建立代码图谱以增强召回。"},
             };
         } else if (method == "ping") {

@@ -1,8 +1,8 @@
-# Recall Memory 项目架构
+# RecallMemory 项目架构
 
 ## 产品边界
 
-Recall Memory 是独立于 Agent 的经验记忆与重复错误防护平台。它不调用模型、不替 Agent 执行动作，也不会自行判定一条经验为可信事实。
+RecallMemory 是独立于 Agent 的经验记忆与重复错误防护平台。它不调用模型、不替 Agent 执行动作，也不会自行判定一条经验为可信事实。
 
 ```text
 桌面客户端 / 任意 Agent
@@ -87,7 +87,7 @@ Tree-sitter 不进行编译和重载解析，因此图谱边包含证据与置�
 
 ## Coding 模式
 
-Recall Memory 应提供 Coding 模式，但模式只负责选择能力配置，不建立另一套记忆内核或数据库。
+RecallMemory 应提供 Coding 模式，但模式只负责选择能力配置，不建立另一套记忆内核或数据库。
 
 通用模式默认隐藏代码专用工具，只按任务、Agent、上下文、资源、实体、流程和显式作用域召回。Coding 模式在相同召回流程上额外启用：
 
@@ -101,7 +101,7 @@ Recall Memory 应提供 Coding 模式，但模式只负责选择能力配置，�
 
 ## 桌面程序
 
-Windows 桌面端是唯一产品入口。点击“启动服务”后，UI 进程直接构造 SQLite、记忆服务、Code Graph、HTTP 和 MCP 对象，并用内部工作线程监听本机端口；不会启动或依赖任何子进程。关闭窗口会停止工作线程并释放数据库。默认数据库位于 `%LOCALAPPDATA%\Recall Memory\recall-memory.db`。
+Windows 桌面端是唯一产品入口。点击“启动服务”后，UI 进程直接构造 SQLite、记忆服务、Code Graph、HTTP 和 MCP 对象，并用内部工作线程监听本机端口；不会启动或依赖任何子进程。关闭窗口会停止工作线程并释放数据库。默认数据库位于 `%LOCALAPPDATA%\RecallMemory\recall-memory.db`。
 
 首版 UI 负责服务生命周期和连接地址。后续在同一个程序内增加记忆审核、召回解释、冲突合并、过时记忆清理和领域适配器管理。
 
@@ -109,6 +109,6 @@ Windows 桌面端是唯一产品入口。点击“启动服务”后，UI 进程
 
 - 服务默认只监听 `127.0.0.1`。
 - MCP 不提供经验验证工具，Agent 不能自行提升信任等级。
-- Recall Memory 只返回建议验证步骤，不自动执行命令或外部动作。
+- RecallMemory 只返回建议验证步骤，不自动执行命令或外部动作。
 - SQLite 启用 WAL 和五秒忙等待；HTTP 与 MCP 在同一 UI 进程内共享存储实例。
 - 暴露到非本机地址前，必须增加身份认证、授权策略与传输加密。

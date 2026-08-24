@@ -78,7 +78,7 @@ std::filesystem::path executable_directory() {
 std::filesystem::path default_database() {
     PWSTR local_data = nullptr;
     if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData, KF_FLAG_CREATE, nullptr, &local_data))) {
-        const auto path = std::filesystem::path(local_data) / L"Recall Memory" / L"recall-memory.db";
+        const auto path = std::filesystem::path(local_data) / L"RecallMemory" / L"recall-memory.db";
         CoTaskMemFree(local_data);
         return path;
     }
@@ -276,7 +276,7 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
                                    log_edit);
             app.status = GetDlgItem(window, 2001);
             set_running(false);
-            append_log(L"Recall Memory 已就绪");
+            append_log(L"RecallMemory 已就绪");
             return 0;
         }
         case WM_SIZE:
@@ -333,7 +333,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show_command) {
     if (!RegisterClassExW(&window_class_info)) return 1;
 
     const auto window = CreateWindowExW(
-        0, window_class, L"Recall Memory", WS_OVERLAPPEDWINDOW,
+        0, window_class, L"RecallMemory", WS_OVERLAPPEDWINDOW,
         CW_USEDEFAULT, CW_USEDEFAULT, 760, 520, nullptr, nullptr, instance, nullptr);
     if (window == nullptr) return 1;
     ShowWindow(window, show_command);

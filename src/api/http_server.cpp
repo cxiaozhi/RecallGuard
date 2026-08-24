@@ -77,7 +77,7 @@ struct HttpServer::Impl {
         });
 
         server.Get("/health", route([&store](const httplib::Request&) {
-            return nlohmann::json{{"status", "ok"}, {"service", "Recall Memory"}, {"version", "0.1.0"}};
+            return nlohmann::json{{"status", "ok"}, {"service", "RecallMemory"}, {"version", "0.1.0"}};
         }));
 
         server.Post("/v1/workspaces/index", route([&indexer](const httplib::Request& request) {

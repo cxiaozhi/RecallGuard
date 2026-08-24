@@ -1,6 +1,6 @@
 # MCP 接入
 
-Recall Memory 不发布独立 MCP 程序。启动 GUI 内置服务后，Agent 通过 Streamable HTTP 连接：
+RecallMemory 不发布独立 MCP 程序。启动 GUI 内置服务后，Agent 通过 Streamable HTTP 连接：
 
 ```text
 http://127.0.0.1:47831/mcp

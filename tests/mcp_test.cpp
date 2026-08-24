@@ -28,7 +28,7 @@ TEST_CASE("Embedded MCP handles requests and accepts notifications") {
         })json");
         REQUIRE(initialize.has_value());
         const auto initialized = nlohmann::json::parse(*initialize);
-        REQUIRE(initialized.at("result").at("serverInfo").at("name") == "Recall Memory");
+        REQUIRE(initialized.at("result").at("serverInfo").at("name") == "RecallMemory");
 
         const auto create = server.handle(R"json({
             "jsonrpc":"2.0",
